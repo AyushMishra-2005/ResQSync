@@ -1,0 +1,12 @@
+# Ignore everything
+*
+
+# Allow these folders/files
+!data/
+!data/**
+
+!app.py
+!requirements.txt
+
+# Allow gitignore itself
+!.gitignore
