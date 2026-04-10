@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const ngoEmployeeSchma = new mongoose.Schema({
+const ngoEmployeeSchema = new mongoose.Schema({
   empId: String,
   name: String,
   age: Number,
@@ -11,11 +11,20 @@ const ngoEmployeeSchma = new mongoose.Schema({
   category: [String],
 
   location: {
-    latitude: Number,
-    longitude: Number
+    type: {
+      type: String,
+      enum: ["Point"],
+      default: "Point"
+    },
+    coordinates: {
+      type: [Number],
+      required: true
+    }
   },
 
   availability: String
 });
 
-export default mongoose.model("NgoEmployee", ngoEmployeeSchma);
+ngoEmployeeSchema.index({ location: "2dsphere" });
+
+export default mongoose.model("NgoEmployee", ngoEmployeeSchema);
