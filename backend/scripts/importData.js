@@ -11,7 +11,7 @@ console.log("MongoDB Connected");
 
 const results = [];
 
-fs.createReadStream("./data/ngo_employees.csv")
+fs.createReadStream("./data/ngo_employees_amaravati.csv")
   .pipe(csv())
   .on("data", (row) => {
 
