@@ -7,3 +7,5 @@ tqdm
 flask
 gdown
 python-dotenv
+gradio
+gradio_client
