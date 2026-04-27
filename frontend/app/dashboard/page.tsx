@@ -53,7 +53,7 @@ export default function Dashboard() {
 
     const syncUser = async (): Promise<void> => {
       try {
-        const res = await axios.post("http://localhost:8000/api/user/sync", {
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/user/sync`, {
           clerkId: user.id,
           name: user.firstName || user.fullName || "User",
           email: user.emailAddresses?.[0]?.emailAddress || "",
@@ -71,7 +71,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        const res = await axios.get("http://localhost:8000/api/request");
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/request`);
         console.log("Fetched requests:", res.data);
 
         setRequests(res.data.requests);
@@ -132,7 +132,7 @@ export default function Dashboard() {
         },
       };
 
-      const res = await fetch("http://localhost:8000/api/worker/nearby", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/worker/nearby`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -189,7 +189,7 @@ export default function Dashboard() {
       console.log("AI:", aiData);
 
       // 🔥 STEP 2: Save EVERYTHING to backend
-      const res = await axios.post("http://localhost:8000/api/request", {
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/request`, {
         clerkId: user.id,
         text: message,
         category: aiData.category,
@@ -214,7 +214,7 @@ export default function Dashboard() {
     try {
       toast.loading("Deleting request...", { id: "delete" });
 
-      const res = await fetch(`http://localhost:8000/api/request/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/request/${id}`, {
         method: "DELETE",
       });
 

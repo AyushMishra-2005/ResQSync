@@ -63,7 +63,7 @@ const handleAssignWorker = async (workerId: string) => {
     // Loading toast
     toast.loading("Assigning worker...", { id: "assignWorker" });
 
-    const res = await fetch("http://localhost:8000/api/assign", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/assign`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
