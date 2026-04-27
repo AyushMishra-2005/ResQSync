@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyc.*
+*.py,cover
+
+# Virtual Environment
+venv/
+.env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+results/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache / Temp
+.cache/
+tmp/
+temp/
+
+# Models
+models/*
+!models/download_models.py
+
+
+# HuggingFace Cache
+.cache/huggingface/
+
+# Environment variables
+.env.local
+.env.*.local
+
+# Misc
+*.sqlite3
+
+category-model-api/
+priority-model-api/
