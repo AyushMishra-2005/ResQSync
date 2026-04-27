@@ -1,16 +1,14 @@
 import os
-import torch
-import pickle
 from dotenv import load_dotenv
-from transformers import BertTokenizer, BertForSequenceClassification
-from gradio_client import Client
 
 load_dotenv()
 
-USE_API = os.getenv("USE_API", "false").lower() == "true"
+USE_API = os.getenv("USE_API", "true").lower() == "true"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if USE_API:
+    from gradio_client import Client
+
     category_client = Client(
         "ayushmishra9449/category-model-api",
         token=HF_TOKEN
@@ -22,6 +20,10 @@ if USE_API:
     )
 
 else:
+    import torch
+    import pickle
+    from transformers import BertTokenizer, BertForSequenceClassification
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = BertTokenizer.from_pretrained("models/tokenizer")
@@ -41,13 +43,19 @@ else:
 
 def predict_model(text):
     if USE_API:
-        category = category_client.predict(text, api_name="/predict")
-        priority = priority_client.predict(text, api_name="/predict")
+        try:
+            category = category_client.predict(text, api_name="/predict")
+            priority = priority_client.predict(text, api_name="/predict")
 
-        return {
-            "category": category,
-            "priority": priority
-        }
+            return {
+                "category": category,
+                "priority": priority
+            }
+        except Exception as e:
+            return {
+                "error": "Model API unavailable",
+                "details": str(e)
+            }
 
     else:
         inputs = tokenizer(
