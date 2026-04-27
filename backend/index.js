@@ -3,6 +3,9 @@ import express from "express";
 import cors from "cors";
 import connectDB from './config/db.js';
 import workerRoute from './routes/worker.route.js'
+import userRoutes from './routes/userRoutes.js'
+import requestRoutes from "./routes/requestRoutes.js";
+import assignRoutes from "./routes/assignRoutes.js";
 
 const app = express();
 connectDB();
@@ -14,6 +17,9 @@ app.get("/", (req, res) => {
   res.send("Backend is running");
 });
 app.use("/api/worker", workerRoute);
+app.use("/api/assign", assignRoutes);
+app.use("/api/user",userRoutes)
+app.use("/api/request", requestRoutes);
 
 const PORT = process.env.PORT || 8000;
 
