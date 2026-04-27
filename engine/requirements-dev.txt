@@ -9,3 +9,4 @@ gdown
 python-dotenv
 gradio
 gradio_client
+flask-cors
