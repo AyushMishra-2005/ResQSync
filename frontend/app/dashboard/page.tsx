@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [message, setMessage] = useState("");
   const [requests, setRequests] = useState<any[]>([]);
   const activeRequests = requests.filter((r) => r.status === "pending");
+  const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
   const [locationStatus, setLocationStatus] = useState<
     "idle" | "loading" | "done" | "error"
@@ -37,9 +38,16 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"report" | "requests">("report");
 
   useEffect(() => {
-    const r = localStorage.getItem("resqsync_role") || "user";
-    setRole(r);
-  }, []);
+    if (!user) return;
+
+    const email = user.emailAddresses?.[0]?.emailAddress;
+
+    if (email === ADMIN_EMAIL) {
+      setRole("ngo");
+    } else {
+      setRole("user");
+    }
+  }, [user]);
   useEffect(() => {
     if (!user || hasSynced.current) return;
 
@@ -165,13 +173,16 @@ export default function Dashboard() {
 
     try {
       // 🔥 STEP 1: Call AI FIRST
-      const aiRes = await fetch("https://resqsync-engine.onrender.com/predict", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const aiRes = await fetch(
+        "https://resqsync-engine.onrender.com/predict",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: message }),
         },
-        body: JSON.stringify({ text: message }),
-      });
+      );
 
       const aiData = await aiRes.json();
 
@@ -200,25 +211,24 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (id: string) => {
-  try {
-    toast.loading("Deleting request...", { id: "delete" });
+    try {
+      toast.loading("Deleting request...", { id: "delete" });
 
-    const res = await fetch(`http://localhost:8000/api/request/${id}`, {
-      method: "DELETE",
-    });
+      const res = await fetch(`http://localhost:8000/api/request/${id}`, {
+        method: "DELETE",
+      });
 
-    if (!res.ok) throw new Error("Failed");
+      if (!res.ok) throw new Error("Failed");
 
-    // 🔥 remove from UI instantly
-    setRequests((prev) => prev.filter((r) => r._id !== id));
+      // 🔥 remove from UI instantly
+      setRequests((prev) => prev.filter((r) => r._id !== id));
 
-    toast.success("Request deleted", { id: "delete" });
-
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to delete", { id: "delete" });
-  }
-};
+      toast.success("Request deleted", { id: "delete" });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to delete", { id: "delete" });
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
