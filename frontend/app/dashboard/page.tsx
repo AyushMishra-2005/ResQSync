@@ -25,8 +25,8 @@ export default function Dashboard() {
   const [role, setRole] = useState("user");
   const [message, setMessage] = useState("");
   const [requests, setRequests] = useState<any[]>([]);
-  const activeRequests = requests.filter((r) => r.status === "pending");
   const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+  const [loading, setLoading] = useState(false);
 
   const [locationStatus, setLocationStatus] = useState<
     "idle" | "loading" | "done" | "error"
@@ -39,60 +39,57 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-
     const email = user.emailAddresses?.[0]?.emailAddress;
-
     if (email === ADMIN_EMAIL) {
       setRole("ngo");
     } else {
       setRole("user");
     }
   }, [user]);
+
   useEffect(() => {
     if (!user || hasSynced.current) return;
-
     const syncUser = async (): Promise<void> => {
       try {
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/user/sync`, {
+        await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/user/sync`, {
           clerkId: user.id,
           name: user.firstName || user.fullName || "User",
           email: user.emailAddresses?.[0]?.emailAddress || "",
         });
-
         hasSynced.current = true;
       } catch (err: any) {
         console.error("Error syncing user:", err.response?.data || err.message);
       }
     };
-
     syncUser();
   }, [user]);
 
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/request`);
-        console.log("Fetched requests:", res.data);
-
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/request`,
+        );
         setRequests(res.data.requests);
       } catch (err) {
         console.error("Error fetching requests:", err);
       }
     };
-
     fetchRequests();
   }, []);
 
+  // ✅ FIX: Filter by r.user?.clerkId (not r.clerkId)
+  const myRequests = requests.filter((r) => r.user?.clerkId === user?.id);
+  const activeRequests = requests.filter((r) => r.status === "pending");
+  const myRequestsCount = myRequests.length;
+
   const getLocation = () => {
     setLocationStatus("loading");
-
     toast.loading("Detecting location...", { id: "location" });
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setLocationStatus("done");
-
         toast.success("Location captured", { id: "location" });
       },
       () => {
@@ -102,27 +99,9 @@ export default function Dashboard() {
     );
   };
 
-  type RequestType = {
-    urgency?: string;
-    category?: string;
-    location?: {
-      latitude: number;
-      longitude: number;
-    };
-  };
-
-  type WorkerType = {
-    latitude: number;
-    longitude: number;
-  };
-
   const handleAssign = async (req: any): Promise<void> => {
     try {
-      console.log("Clicked request:", req);
-
-      // 🔥 Show loading toast
       toast.loading("Finding nearby workers...", { id: "assign" });
-
       const payload = {
         category: req.category,
         priority: req.priority,
@@ -131,98 +110,79 @@ export default function Dashboard() {
           longitude: req.location.lng,
         },
       };
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/worker/nearby`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/worker/nearby`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch nearby workers");
-      }
-
+      );
+      if (!res.ok) throw new Error("Failed to fetch nearby workers");
       const data = await res.json();
-
-      console.log("Workers:", data);
-
-      // Success toast (update same one)
-      toast.success(`Found ${data.workers?.length || 0} workers nearby 🚀`, {
+      toast.success(`Found ${data.workers?.length || 0} workers nearby`, {
         id: "assign",
       });
-
-      // Save data
       localStorage.setItem("selectedRequestId", req._id);
       localStorage.setItem("workers", JSON.stringify(data.workers));
       localStorage.setItem("request", JSON.stringify(req));
-
-      // Navigate
       router.push("/map");
     } catch (err) {
       console.error("Error in handleAssign:", err);
-
-      // Error toast
-      toast.error("Failed to find workers ❌", { id: "assign" });
+      toast.error("Failed to find workers", { id: "assign" });
     }
   };
 
   const handleSubmit = async () => {
     if (!message || !location || !user) return;
-
+    setLoading(true);
+    toast.loading("Sending request...", { id: "submit" });
     try {
-      // 🔥 STEP 1: Call AI FIRST
       const aiRes = await fetch(
         "https://resqsync-engine.onrender.com/predict",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: message }),
         },
       );
-
       const aiData = await aiRes.json();
-
-      console.log("AI:", aiData);
-
-      // 🔥 STEP 2: Save EVERYTHING to backend
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/request`, {
-        clerkId: user.id,
-        text: message,
-        category: aiData.category,
-        priority: aiData.priority,
-        location: {
-          latitude: location.lat,
-          longitude: location.lng,
-        },
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clerkId: user.id,
+          text: message,
+          category: aiData.category,
+          priority: aiData.priority,
+          location: {
+            latitude: location.lat,
+            longitude: location.lng,
+          },
+        }),
       });
-
-      console.log("Request saved:", res.data);
-
-      toast.success("Emergency reported successfully");
+      toast.success("Emergency sent successfully", { id: "submit" });
+      setMessage("");
+      setLocation(null);
+      setLocationStatus("idle");
       setSubmitted(true);
     } catch (err) {
-      console.error("Error:", err);
-      toast.error("Failed to send request");
+      console.error(err);
+      toast.error("Failed to send", { id: "submit" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       toast.loading("Deleting request...", { id: "delete" });
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/request/${id}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/request/${id}`,
+        { method: "DELETE" },
+      );
       if (!res.ok) throw new Error("Failed");
-
-      // 🔥 remove from UI instantly
       setRequests((prev) => prev.filter((r) => r._id !== id));
-
       toast.success("Request deleted", { id: "delete" });
     } catch (err) {
       console.error(err);
@@ -241,7 +201,6 @@ export default function Dashboard() {
     user?.emailAddresses[0]?.emailAddress[0]?.toUpperCase() ||
     "?";
 
-  // ⏱ time helpers
   const ms = (t: string) => new Date(t).getTime();
 
   const isToday = (t: string) => {
@@ -254,10 +213,8 @@ export default function Dashboard() {
     );
   };
 
-  // 🚨 Active (pending)
   const activeCount = requests.filter((r) => r.status === "pending").length;
 
-  // 🤝 Volunteers (from last /nearby call OR store globally)
   const volunteersCount = (() => {
     try {
       const workers = JSON.parse(localStorage.getItem("workers") || "[]");
@@ -267,26 +224,21 @@ export default function Dashboard() {
     }
   })();
 
-  // ✅ Resolved today (status = assigned AND updated today)
   const resolvedTodayCount = requests.filter(
     (r) => r.status === "assigned" && isToday(r.updatedAt || r.createdAt),
   ).length;
 
-  // ⏱ Avg response time (assigned - created)
   const avgResponse = (() => {
     const assigned = requests.filter((r) => r.status === "assigned");
     if (assigned.length === 0) return "—";
-
     const totalMs = assigned.reduce((acc, r) => {
       const start = ms(r.createdAt);
       const end = ms(r.updatedAt || r.createdAt);
       return acc + (end - start);
     }, 0);
-
     const avgMs = totalMs / assigned.length;
     const mins = Math.floor(avgMs / 60000);
     const secs = Math.floor((avgMs % 60000) / 1000);
-
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
   })();
 
@@ -313,7 +265,6 @@ export default function Dashboard() {
           boxShadow: "0 2px 16px rgba(0,0,0,0.2)",
         }}
       >
-        {/* Logo pill */}
         <div
           style={{
             display: "flex",
@@ -348,9 +299,7 @@ export default function Dashboard() {
           </span>
         </div>
 
-        {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          {/* Role badge */}
           <div
             style={{
               display: "flex",
@@ -373,7 +322,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* Avatar */}
           <div
             style={{
               width: 36,
@@ -391,7 +339,6 @@ export default function Dashboard() {
             {initials}
           </div>
 
-          {/* Sign out */}
           <button
             onClick={handleSignOut}
             style={{
@@ -470,7 +417,7 @@ export default function Dashboard() {
                     color: activeTab === tab ? "white" : G.muted,
                   }}
                 >
-                  {tab === "report" ? "🚨 Report Emergency" : "📋 My Requests"}
+                  {tab === "report" ? "🚨 Report Emergency" : `📋 My Requests${myRequestsCount > 0 ? ` (${myRequestsCount})` : ""}`}
                 </button>
               ))}
             </div>
@@ -521,7 +468,6 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Message */}
                   <label
                     style={{
                       display: "block",
@@ -561,9 +507,6 @@ export default function Dashboard() {
                     }
                   />
 
-                  {/* Urgency */}
-
-                  {/* Location */}
                   <label
                     style={{
                       display: "block",
@@ -610,18 +553,16 @@ export default function Dashboard() {
                       />
                     )}
                     {locationStatus === "idle" && "📍 Detect My Location"}
-                    {locationStatus === "loading" &&
-                      "Detecting your location..."}
+                    {locationStatus === "loading" && "Detecting your location..."}
                     {locationStatus === "done" &&
                       `✓ Captured (${location?.lat.toFixed(4)}, ${location?.lng.toFixed(4)})`}
                     {locationStatus === "error" && "❌ Failed — tap to retry"}
                     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
                   </button>
 
-                  {/* Submit */}
                   <button
                     onClick={handleSubmit}
-                    disabled={!message || locationStatus !== "done"}
+                    disabled={!message || locationStatus !== "done" || loading}
                     style={{
                       width: "100%",
                       padding: "16px",
@@ -629,34 +570,35 @@ export default function Dashboard() {
                       fontSize: 16,
                       fontWeight: 800,
                       cursor:
-                        message && locationStatus === "done"
+                        message && locationStatus === "done" && !loading
                           ? "pointer"
                           : "not-allowed",
                       transition: "all 0.2s",
                       background:
-                        message && locationStatus === "done"
+                        message && locationStatus === "done" && !loading
                           ? G.dark
                           : G.creamDark,
                       color:
-                        message && locationStatus === "done"
+                        message && locationStatus === "done" && !loading
                           ? "white"
                           : G.muted,
                       border: "none",
                       boxShadow:
-                        message && locationStatus === "done"
+                        message && locationStatus === "done" && !loading
                           ? "0 8px 24px rgba(15,51,32,0.25)"
                           : "none",
+                      opacity: loading ? 0.7 : 1,
                     }}
                     onMouseOver={(e) => {
-                      if (message && locationStatus === "done")
+                      if (message && locationStatus === "done" && !loading)
                         e.currentTarget.style.background = G.main;
                     }}
                     onMouseOut={(e) => {
-                      if (message && locationStatus === "done")
+                      if (message && locationStatus === "done" && !loading)
                         e.currentTarget.style.background = G.dark;
                     }}
                   >
-                    Send Emergency Alert →
+                    {loading ? "Sending..." : "Send Emergency Alert →"}
                   </button>
                 </div>
               ) : (
@@ -692,7 +634,14 @@ export default function Dashboard() {
                     matched to your location right now.
                   </p>
                   <button
-                    onClick={() => setSubmitted(false)}
+                    onClick={() => {
+                      setSubmitted(false);
+                      // ✅ Refresh requests so My Requests tab updates
+                      axios
+                        .get(`${process.env.NEXT_PUBLIC_API_URL}/api/request`)
+                        .then((res) => setRequests(res.data.requests))
+                        .catch(console.error);
+                    }}
                     style={{
                       background: G.yellow,
                       color: G.dark,
@@ -709,7 +658,7 @@ export default function Dashboard() {
                 </div>
               )
             ) : (
-              /* MY REQUESTS TAB */
+              /* ── MY REQUESTS TAB ── */
               <div
                 style={{
                   background: "white",
@@ -726,23 +675,117 @@ export default function Dashboard() {
                     marginBottom: 20,
                   }}
                 >
-                  Your Active Requests
+                  Your Requests
                 </h2>
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "48px 24px",
-                    color: G.muted,
-                  }}
-                >
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-                  <p style={{ fontSize: 15, fontWeight: 600, color: G.dark }}>
-                    No active requests
-                  </p>
-                  <p style={{ fontSize: 13, marginTop: 6 }}>
-                    Your submitted emergency reports will appear here.
-                  </p>
-                </div>
+
+                {/* ✅ FIX: filter by r.user?.clerkId, show ALL user's requests (not just pending) */}
+                {myRequests.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "48px 24px",
+                      color: G.muted,
+                    }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: G.dark }}>
+                      No requests yet
+                    </p>
+                    <p style={{ fontSize: 13, marginTop: 6 }}>
+                      Your emergency reports will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  myRequests.map((req) => (
+                    <div
+                      key={req._id}
+                      style={{
+                        padding: "18px 16px",
+                        borderRadius: 14,
+                        border: `1px solid ${G.creamDark}`,
+                        marginBottom: 12,
+                        background: G.cream,
+                      }}
+                    >
+                      {/* ✅ FIX: show req.text (what was submitted) not req.problem */}
+                      <p style={{ fontWeight: 700, color: G.dark, marginBottom: 6 }}>
+                        {req.text || req.problem || "No description"}
+                      </p>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            background: "#e0f2fe",
+                            color: "#0369a1",
+                            fontWeight: 600,
+                          }}
+                        >
+                          📂 {req.category || "General"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            background:
+                              req.priority === "HIGH"
+                                ? "#fee2e2"
+                                : req.priority === "MEDIUM"
+                                  ? "#fef3c7"
+                                  : "#dcfce7",
+                            color:
+                              req.priority === "HIGH"
+                                ? "#dc2626"
+                                : req.priority === "MEDIUM"
+                                  ? "#d97706"
+                                  : "#16a34a",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⚡ {req.priority || "LOW"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            background: req.status === "pending" ? "#fee2e2" : "#dcfce7",
+                            color: req.status === "pending" ? "#dc2626" : "#16a34a",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {req.status === "pending" ? "⏳ Pending" : "✅ Assigned"}
+                        </span>
+                      </div>
+
+                      <p style={{ fontSize: 11, color: G.muted, marginBottom: 10 }}>
+                        🕒 {new Date(req.createdAt).toLocaleString()}
+                      </p>
+
+                      {/* Only allow delete if still pending */}
+                      {req.status === "pending" && (
+                        <button
+                          onClick={() => handleDelete(req._id)}
+                          style={{
+                            background: "#fee2e2",
+                            color: "#dc2626",
+                            border: "none",
+                            padding: "6px 14px",
+                            borderRadius: 50,
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Cancel Request
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -752,21 +795,26 @@ export default function Dashboard() {
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)",
                 gap: 16,
-                marginTop: 8,
+                marginTop: 16,
               }}
             >
               {[
-                { icon: "📋", label: "My Requests", val: "0", color: G.dark },
+                {
+                  icon: "📋",
+                  label: "My Requests",
+                  val: myRequestsCount,
+                  color: G.dark,
+                },
                 {
                   icon: "🤝",
                   label: "Volunteers Nearby",
-                  val: "—",
+                  val: 10,
                   color: G.main,
                 },
                 {
                   icon: "⚡",
                   label: "Avg Response",
-                  val: "~12 min",
+                  val: avgResponse,
                   color: "#d97706",
                 },
               ].map(({ icon, label, val, color }) => (
@@ -801,7 +849,6 @@ export default function Dashboard() {
         ) : (
           /* ── NGO ADMIN VIEW ── */
           <>
-            {/* Stats */}
             <div
               style={{
                 display: "grid",
@@ -882,7 +929,6 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Incoming requests */}
             <div
               style={{
                 background: "white",
@@ -917,151 +963,167 @@ export default function Dashboard() {
                 </span>
               </div>
 
-              {requests.map((req, i, arr) => (
+              {requests.length === 0 ? (
                 <div
-                  key={i}
                   style={{
-                    padding: "18px 28px",
-                    borderBottom:
-                      i < arr.length - 1 ? `1px solid ${G.creamDark}` : "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 16,
-                    transition: "background 0.15s",
+                    textAlign: "center",
+                    padding: "48px 24px",
+                    color: G.muted,
                   }}
-                  onMouseOver={(e) =>
-                    (e.currentTarget.style.background = G.cream)
-                  }
-                  onMouseOut={(e) =>
-                    (e.currentTarget.style.background = "white")
-                  }
                 >
-                  {/* Avatar */}
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: G.dark }}>
+                    No requests yet
+                  </p>
+                </div>
+              ) : (
+                requests.map((req, i, arr) => (
                   <div
+                    key={req._id || i}
                     style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: "50%",
-                      background: G.cream,
-                      border: `2px solid ${G.creamDark}`,
+                      padding: "18px 28px",
+                      borderBottom:
+                        i < arr.length - 1 ? `1px solid ${G.creamDark}` : "none",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: G.dark,
+                      gap: 16,
+                      transition: "background 0.15s",
                     }}
+                    onMouseOver={(e) =>
+                      (e.currentTarget.style.background = G.cream)
+                    }
+                    onMouseOut={(e) =>
+                      (e.currentTarget.style.background = "white")
+                    }
                   >
-                    {req.user?.name?.[0] || "U"}
-                  </div>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: "50%",
+                        background: G.cream,
+                        border: `2px solid ${G.creamDark}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: G.dark,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {req.user?.name?.[0] || "U"}
+                    </div>
 
-                  {/* Info */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <p style={{ fontWeight: 700 }}>
-                        {req.user?.name || "Unknown"}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <p style={{ fontWeight: 700, color: G.dark }}>
+                          {req.user?.name || "Unknown"}
+                        </p>
+                        <span style={{ fontSize: 11, color: G.muted }}>
+                          📍 {req.location?.lat?.toFixed(4)}, {req.location?.lng?.toFixed(4)}
+                        </span>
+                      </div>
+
+                      {/* ✅ FIX: show req.text not req.problem */}
+                      <p style={{ fontSize: 13, color: G.dark, margin: "4px 0" }}>
+                        {req.text || req.problem || "No description"}
                       </p>
 
-                      <span style={{ fontSize: 11 }}>
-                        📍 {req.location?.lat}, {req.location?.lng}
-                      </span>
+                      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 10px",
+                            borderRadius: 20,
+                            background: "#e0f2fe",
+                            color: "#0369a1",
+                            fontWeight: 600,
+                          }}
+                        >
+                          📂 {req.category || "General"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 10px",
+                            borderRadius: 20,
+                            background:
+                              req.priority === "HIGH"
+                                ? "#fee2e2"
+                                : req.priority === "MEDIUM"
+                                  ? "#fef3c7"
+                                  : "#dcfce7",
+                            color:
+                              req.priority === "HIGH"
+                                ? "#dc2626"
+                                : req.priority === "MEDIUM"
+                                  ? "#d97706"
+                                  : "#16a34a",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⚡ {req.priority || "LOW"}
+                        </span>
+                      </div>
+
+                      <p style={{ fontSize: 11, color: G.muted, marginTop: 4 }}>
+                        🕒 {new Date(req.createdAt).toLocaleTimeString()}
+                      </p>
                     </div>
 
-                    <p>{req.problem}</p>
-                    <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                      {/* Category */}
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: "4px 10px",
-                          borderRadius: 20,
-                          background: "#e0f2fe",
-                          color: "#0369a1",
-                          fontWeight: 600,
-                        }}
-                      >
-                        📂 {req.category || "General"}
-                      </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "4px 12px",
+                        borderRadius: 20,
+                        background:
+                          req.status === "pending" ? "#fee2e2" : "#dcfce7",
+                        color: req.status === "pending" ? "#dc2626" : "#16a34a",
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {req.status.toUpperCase()}
+                    </span>
 
-                      {/* Priority */}
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: "4px 10px",
-                          borderRadius: 20,
-                          background:
-                            req.priority === "HIGH"
-                              ? "#fee2e2"
-                              : req.priority === "MEDIUM"
-                                ? "#fef3c7"
-                                : "#dcfce7",
-                          color:
-                            req.priority === "HIGH"
-                              ? "#dc2626"
-                              : req.priority === "MEDIUM"
-                                ? "#d97706"
-                                : "#16a34a",
-                          fontWeight: 700,
-                        }}
-                      >
-                        ⚡ {req.priority || "LOW"}
-                      </span>
-                    </div>
-
-                    <p style={{ fontSize: 11 }}>
-                      🕒 {new Date(req.createdAt).toLocaleTimeString()}
-                    </p>
-                  </div>
-
-                  {/* Status */}
-                  <span
-                    style={{
-                      fontSize: 11,
-                      padding: "4px 12px",
-                      borderRadius: 20,
-                      background:
-                        req.status === "pending" ? "#fee2e2" : "#dcfce7",
-                      color: req.status === "pending" ? "#dc2626" : "#16a34a",
-                    }}
-                  >
-                    {req.status.toUpperCase()}
-                  </span>
-
-                  {/* Assign button */}
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {req.status !== "assigned" && (
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      {req.status !== "assigned" && (
+                        <button
+                          onClick={() => handleAssign(req)}
+                          style={{
+                            background: G.dark,
+                            color: "white",
+                            border: "none",
+                            padding: "8px 14px",
+                            borderRadius: 50,
+                            cursor: "pointer",
+                            fontWeight: 600,
+                            fontSize: 12,
+                          }}
+                        >
+                          Assign →
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleAssign(req)}
+                        onClick={() => handleDelete(req._id)}
                         style={{
-                          background: G.dark,
-                          color: "white",
+                          background: "#fee2e2",
+                          color: "#dc2626",
                           border: "none",
                           padding: "8px 14px",
                           borderRadius: 50,
                           cursor: "pointer",
+                          fontWeight: 600,
+                          fontSize: 12,
                         }}
                       >
-                        Assign →
+                        Delete
                       </button>
-                    )}
-
-                    <button
-                      onClick={() => handleDelete(req._id)}
-                      style={{
-                        background: "#fee2e2",
-                        color: "#dc2626",
-                        border: "none",
-                        padding: "8px 14px",
-                        borderRadius: 50,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Delete
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </>
         )}
