@@ -13,6 +13,12 @@ export default function AppNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
+
+          // Smooth transition
+          animation: 'fade',
+
+          // Optional: smoother feel
+          animationDuration: 250,
         }}
       >
         <Stack.Screen
