@@ -13,6 +13,22 @@ class SmsReceiver : BroadcastReceiver() {
         intent: Intent
     ) {
 
+        val prefs =
+            context.getSharedPreferences(
+                "resqsync",
+                Context.MODE_PRIVATE
+            )
+
+        val gatewayEnabled =
+            prefs.getBoolean(
+                "gateway_enabled",
+                false
+            )
+
+        if (!gatewayEnabled) {
+            return
+        }
+
         if (
             Telephony.Sms.Intents.SMS_RECEIVED_ACTION ==
             intent.action
@@ -46,7 +62,6 @@ class SmsReceiver : BroadcastReceiver() {
                         """.trimIndent()
                     )
 
-                    // Send SMS to Backend
                     SmsApi.sendSms(
                         sender,
                         body

@@ -1,5 +1,6 @@
 package com.resqsyncgateway
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.facebook.react.bridge.ReactApplicationContext
@@ -17,6 +18,19 @@ class ForegroundModule(
     @ReactMethod
     fun startService() {
 
+        val prefs =
+            reactContext.getSharedPreferences(
+                "resqsync",
+                Context.MODE_PRIVATE
+            )
+
+        prefs.edit()
+            .putBoolean(
+                "gateway_enabled",
+                true
+            )
+            .apply()
+
         val intent = Intent(
             reactContext,
             ForegroundService::class.java
@@ -31,6 +45,19 @@ class ForegroundModule(
 
     @ReactMethod
     fun stopService() {
+
+        val prefs =
+            reactContext.getSharedPreferences(
+                "resqsync",
+                Context.MODE_PRIVATE
+            )
+
+        prefs.edit()
+            .putBoolean(
+                "gateway_enabled",
+                false
+            )
+            .apply()
 
         val intent = Intent(
             reactContext,
