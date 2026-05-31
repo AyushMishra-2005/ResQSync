@@ -10,12 +10,77 @@ import {
 
 import LinearGradient from 'react-native-linear-gradient';
 import MainLayout from '../layouts/MainLayout';
+import {
+  startForegroundService,
+  stopForegroundService,
+} from '../services/foregroundService';
+import { PermissionsAndroid } from 'react-native';
 
 export default function HomeScreen() {
   const [isRunning, setIsRunning] = useState(false);
 
-  const handleStart = () => {
-    setIsRunning(true);
+  const handleStart = async () => {
+    try {
+      console.log('Before permission');
+
+      const granted = await requestSmsPermissions();
+
+      console.log('After permission');
+
+      if (!granted) {
+        return;
+      }
+
+      console.log('Before service');
+
+      await startForegroundService();
+
+      console.log('After service');
+
+      setIsRunning(true);
+
+      console.log('After state update');
+    } catch (error) {
+      console.log('ERROR:', error);
+    }
+  };
+
+  const handleStop = async () => {
+    try {
+      await stopForegroundService();
+
+      setIsRunning(false);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+  const requestSmsPermissions = async () => {
+    try {
+      const receiveSms = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+      );
+
+      const readSms = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_SMS,
+      );
+
+      const notificationPermission =
+        await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        );
+
+      return (
+        receiveSms ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+        readSms ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+        notificationPermission ===
+        PermissionsAndroid.RESULTS.GRANTED
+      );
+    } catch (error) {
+      console.log(error);
+      return false;
+    }
   };
 
   return (
@@ -81,14 +146,17 @@ export default function HomeScreen() {
           {/* Start Button */}
           <TouchableOpacity
             activeOpacity={0.85}
-            disabled={isRunning}
-            onPress={handleStart}
+            onPress={
+              isRunning
+                ? handleStop
+                : handleStart
+            }
             style={{ width: '100%' }}
           >
             <LinearGradient
               colors={
                 isRunning
-                  ? ['#00C853', '#00E676']
+                  ? ['#FF4D4D', '#FF6B6B']
                   : ['#007AFF', '#00C6FF']
               }
               start={{ x: 0, y: 0 }}
@@ -97,7 +165,7 @@ export default function HomeScreen() {
             >
               <Text style={styles.buttonText}>
                 {isRunning
-                  ? 'MONITORING ACTIVE'
+                  ? 'STOP MONITORING'
                   : 'START MONITORING'}
               </Text>
             </LinearGradient>
